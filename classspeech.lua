@@ -17,8 +17,16 @@ local speech_mt = { __index = speech }	-- metatable
 function speech.new( parms )	-- constructor
  
 	local newspeech = {
+							typeobject				= "speechclass",
+							id                      = parms.id,
 	    					speechtext 				= parms.speechtext,
 	    					language   				= (parms.language or "en"),      -- 'en' for example
+	    					--	en = {id="en",desc="English",},
+						--	fr = {id="fr",desc="French",},
+						--	de = {id="de",desc="German",},
+						--	it = {id="it",desc="Italian",},
+						--	la = {id="la",desc="Latin",},
+						--	es = {id="es",desc="Spanish",},
 	    					audiofreechannelsearch  = parms.audiofreechannelsearch,
 	    					filename   				= parms.filename,
 	    					filedir   				= parms.filedir,
@@ -26,16 +34,15 @@ function speech.new( parms )	-- constructor
 	    					speechurl               = (parms.speechurl or "http://translate.google.com/translate_tts"),
 	    					speechmaxlength			= (parms.speechmaxlength or 100),   -- free will only allow 100 max so we split it up
 	    					overwritespeechfiles    = (parms.overwritespeechfiles or false),
-	    					buildspeechfilesonly    = (parms.buildspeechfilesonly or false)
+	    					buildspeechfilesonly    = (parms.buildspeechfilesonly or false),
+	    					play                    = true,
+	    					error                   = nil,
 					  }
-
-
-     newspeech.play = true
-	 --print ("here",parms.fn,parms.fp,cm.urlencode(parms.tx))
 
 	return setmetatable( newspeech, speech_mt )
 end
 
+ 
 function speech:PlayAudio()
 
 	 self.mysplit = function(inputstr, isepin, maxlength, splitonsentence)
@@ -95,17 +102,25 @@ function speech:PlayAudio()
 	end	
 
 
-
-
 	 local t = self.mysplit(self.speechtext," ", self.speechmaxlength,true)
 	 local i
 	 local rettable = {}
+
+	 local function CheckFinished( parms )
+	 	print ("CheckFinish",parms.pos)
+	 	if self.play == true and parms.pos == #t then
+	 		Runtime:dispatchEvent{ name="speechevents" ,target=self,type="finish"}
+	 	end
+	 end
 
 
 	 self.PlaySpeechFile = function(event)
 		if self.play == true and self.buildspeechfilesonly == false then
 			if ( event.isError ) then
-					print ( "Network error - download failed" )
+				    self.error = "Network error -  download failed"
+					print ("Error:", self.error)
+					CheckFinished({pos=#t,error=self.error})
+					self.play = false
 			else
 					if event.pos < #t   then 
 					   event.nextfile = self.filename .. "seq" .. event.pos + 1 .. "." .. self.audioformat
@@ -133,17 +148,18 @@ function speech:PlayAudio()
 							self.audiostream = audio.loadStream( event.fn,event.fp )
 							local freechannel = audio.findFreeChannel((self.audiofreechannelsearch or 0))
 							self.audiostreamchannel = audio.play( self.audiostream,{channel=freechannel,onComplete=function() self.PlaySpeechFile({isError=event.isError,fn=event.nextfile,fp=event.fp,pos=event.pos+1}) end}) 
-                            print ("PLAYPLAY audiuo channek",self.audiostreamchannel)
-					
-					----	end
+ 	    	                Runtime:dispatchEvent{ name="speechevents" ,target=self,file=event.fn,type="play"}
+                    else
+ 						CheckFinished({pos=#t})
 					end
 			end
+		else
+			CheckFinished({pos=event.pos})
 		end
 	 end
 
     self.fncAudioStop = function(   )
 		if self.audiostreamchannel then
-	          print ("AUDIO STOP")
 			  audio.stop( self.audiostreamchannel )
 			  self.audiostreamchannel = nil
 		end
@@ -160,15 +176,19 @@ function speech:PlayAudio()
 	 for i = 1,#t ,1 do
 			local finalfn =  self.filename .. "seq" .. i .. "." .. self.audioformat 
 			rettable[i] = {} ; rettable[i].filename = finalfn;  rettable[i].text = t[i]
-			if (self.fileExists(finalfn,self.filedir)  == false or self.overwritespeechfiles == true) then
+			if (self.fileExists(finalfn,self.filedir)  == false or self.overwritespeechfiles == true) and self.play == true then
 			   local urlfinal = self.speechurl .. "?tl=" .. self.language .. "&q=" .. self.urlencode(t[i])
 			   print (urlfinal)
 			   network.download(urlfinal,"GET", 
-								function(event) if i == 1 then  self.PlaySpeech({isError=event.error,fn=finalfn,fp=self.filedir,pos=i }) end  end ,
+								function(event) if i == 1 then  self.PlaySpeech({isError=event.error,fn=finalfn,fp=self.filedir,pos=i })  else if self.buildspeechfilesonly == true then CheckFinished({pos=i}) end end  end ,
 								finalfn, self.filedir
 								)    
 			else
-			   if i == 1 then self.PlaySpeech({isError=false,fn=finalfn,fp=self.filedir,pos=i }) end
+			   if i == 1 then 
+			   	  self.PlaySpeech({isError=false,fn=finalfn,fp=self.filedir,pos=i })
+			   else 
+			   	  if self.buildspeechfilesonly == true then CheckFinished({pos=i}) end
+			   end
 			end
 	 end
 	 
@@ -179,18 +199,17 @@ end
 
 function speech:removeSelf()
     self.play = false
-    print ("REMOVE SPEECH",self.audiostreamchannel)
     if self.audiostreamchannel then
-          print ("AUDIO STOP")
+          print ("AUDIO STOP Channel",self.audiostreamchannel)
 		  audio.stop( self.audiostreamchannel )
 		  self.audiostreamchannel = nil
 	end
-	if self.audiostream then 
+	if self.audiostream then
+	      print ("AUDIO STOP Stream")
 		  audio.dispose( self.audiostream ) 
 		  self.audiostream = nil 
 	end
-
-    --cm.fncAudioStop()
+    
 end
 
 return speech

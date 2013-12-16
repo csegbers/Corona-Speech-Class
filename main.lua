@@ -2,37 +2,36 @@
 -- Classroom Companion
 --====================================================================--
  print("<-==================== Program Start ====================->") 
-
---====================================================================--
---  requires
---====================================================================-- 
  
 local speechtable =
-{
-     speechtext=(" me hi Iran's six-month freeze of its nuclear programme agreed with world powers in Geneva will start by early January, in Tehran's envoy to the UN atomic watchdog said Friday"),
-     language= "en",   	--	en = {id="en",desc="English",},
-						--	fr = {id="fr",desc="French",},
-						--	de = {id="de",desc="German",},
-						--	it = {id="it",desc="Italian",},
-						--	la = {id="la",desc="Latin",},
-						--	es = {id="es",desc="Spanish",},
+   {
+speechtext=(" four score and seven years ago our forefathers. with world powers in Geneva will start by early January. in Tehran's envoy to the UN atomic watchdog said Friday"),
+      --speechtext=(" four score and seven years ago our forefathers"),
+    language= "en",   	
      filename = ("testspeechfile"),
      filedir = system.TemporaryDirectory,
      overwritespeechfiles = true,
      buildspeechfilesonly = false
- }  
-
-
-
-local speechinstance = require("classspeech").new(speechtable) 
-local audst, speechtable = speechinstance:PlayAudio()
-
--- look at the temp files created. Note: they may not exist yet as these are async calls to google.
-local reterr,k,v
-for k,v in pairs(speechtable) do print ("Speech table ",v.filename, v.text) end
+   }  
  
+local speechinstance = require("classspeech").new(speechtable) 
 
--- if speechinstance then speechinstance:removeSelf(); speechinstance = nil; end
+local function fncspeechevents( event )
+       print ("event:", event.target.typeobject, event.type)
+       if event.type == "play" then
+           print (event.file, event.target.language,type(event.target))
+       end
+       if event.type == "finish" then
+           print ("finshed")
+           Runtime:removeEventListener("speechevents", fncspeechevents )
+           speechinstance:removeSelf( )
+           speechinstance = nil
+       end
+ end
+
+Runtime:addEventListener( "speechevents", fncspeechevents )
+
+local audst, speechtable = speechinstance:PlayAudio()
 
 
 
